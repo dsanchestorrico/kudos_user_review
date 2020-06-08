@@ -1,7 +1,9 @@
 const { Router } = require('express');
+const axios = require('axios');
 const router = Router();
 
 const connection = require('../models/connectMysql');
+const publisher = require('../queue/publisher');
 
 router.get('/', (req, res) => {
     const sql = 'SELECT * FROM usuario';
@@ -14,9 +16,36 @@ router.get('/', (req, res) => {
         }
     });
 });
-// router.get('/:idUser', (req, res) => {
-//     res.send('welcome');
-// });
+
+router.get('/usuario/:idUser', (req, res) => {    
+    const sql = `SELECT * FROM usuario WHERE id = ${req.params.idUser} `;
+    connection.query(sql, async(error, resultado) => {
+        if (error) throw error;
+        if (resultado.length > 0) {    
+            let cadena = JSON.stringify(resultado);
+            let data = JSON.parse(cadena);
+            var detail =[];
+            var getDetail = async () => { return await axios.get(`http://localhost:3000/list/${req.params.idUser}`)
+            .then(response =>{
+                console.log(response.data);
+                detail = response.data;
+            })
+            .catch(error =>{
+                console.log('Error;'+error);
+ 
+            })};
+
+            await getDetail();
+
+            data[0].detail = JSON.stringify(detail);
+            //console.log(data);
+            res.json(data);
+        } else {
+            res.send('No hay registros');
+        }
+    });
+});
+
 router.post('/create', (req, res) => {
     const sql = 'INSERT INTO usuario SET ?';
     const usuario = {
@@ -49,6 +78,13 @@ router.delete('/:idUser', (req, res) => {
     connection.query(sql, error => {
         if (error) throw error;
         res.send(`Usuario ${idUser} eliminado`);
+        let data = {
+            destino: req.params.idUser
+        }
+        publisher.publish(data).catch((error) => {
+            console.error(error)
+            process.exit(1)
+        });
 
     });
 });
